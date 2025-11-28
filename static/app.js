@@ -1,5 +1,5 @@
 // static/app.js
-// Use relative path so it works on Localhost AND Render automatically
+
 const API_PREFIX = "/api"; 
 
 const chatWindow = document.getElementById('chatWindow');
@@ -13,13 +13,38 @@ let mediaRecorder;
 let audioChunks = [];
 let speakingAudio = null; 
 
-// Scroll helper
+// ---------------------------------------------------------
+// HELPER FUNCTIONS
+// ---------------------------------------------------------
+
 function scrollToBottom() {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
+// ANIMATION: Show "Thinking" Bubbles
+function showLoading() {
+    const loaderDiv = document.createElement('div');
+    loaderDiv.id = 'loading-indicator';
+    loaderDiv.className = 'message bot';
+    loaderDiv.innerHTML = `
+        <div class="avatar">
+            <span class="material-symbols-rounded">medical_services</span>
+        </div>
+        <div class="content typing-indicator">
+            <span></span><span></span><span></span>
+        </div>`;
+    chatWindow.appendChild(loaderDiv);
+    scrollToBottom();
+}
+
+// ANIMATION: Remove "Thinking" Bubbles
+function removeLoading() {
+    const loader = document.getElementById('loading-indicator');
+    if (loader) loader.remove();
+}
+
 // ---------------------------------------------------------
-// UI MESSAGE RENDERER (With Animation)
+// UI MESSAGE RENDERER
 // ---------------------------------------------------------
 function addMessage(text, sender) {
     const messageEl = document.createElement('div');
@@ -34,88 +59,74 @@ function addMessage(text, sender) {
     const content = document.createElement('div');
     content.className = 'content';
 
-    // Append elements to DOM first (so we can animate into them)
     messageEl.appendChild(avatar);
     messageEl.appendChild(content);
     chatWindow.appendChild(messageEl);
 
-    // LOGIC: Typewriter for Bot, Instant for User
     if (sender === 'bot') {
-        // 1. Parse Markdown to HTML
+        // 1. Parse Markdown
         let htmlContent = typeof marked !== 'undefined' ? marked.parse(text) : text;
         
-        // 2. Add Medicine Highlights (if MedicineDB is loaded)
+        // 2. Highlight Medicines (Safely check if MedicineDB exists)
         if (typeof MedicineDB !== 'undefined') {
             htmlContent = MedicineDB.highlightMedicines(htmlContent);
         }
 
-        // 3. Start Typewriter Effect
-        content.classList.add('typing-cursor'); // Add blinking cursor
+        // 3. Typewriter Effect
+        content.classList.add('typing-cursor');
         typeWriterEffect(content, htmlContent);
         
     } else {
-        // User message appears instantly
         content.innerText = text;
         scrollToBottom();
     }
 }
 
 // ---------------------------------------------------------
-// TYPEWRITER ANIMATION LOGIC
+// TYPEWRITER ANIMATION
 // ---------------------------------------------------------
 function typeWriterEffect(element, htmlString) {
-    // 1. Split HTML into tokens (tags vs text) to prevent breaking HTML
+    // Split by HTML tags so we don't break formatting
     const tokens = htmlString.split(/(<[^>]+>)/g);
     
     let tokenIndex = 0;
     let charIndex = 0;
     let currentToken = "";
-
-    // CONFIGURATION: Speed in milliseconds (Lower = Faster)
-    // 10ms is a good "high speed" feel
-    const TYPING_SPEED = 10; 
+    const TYPING_SPEED = 15; // Speed (ms)
 
     function type() {
-        // Stop if done
         if (tokenIndex >= tokens.length) {
-            element.classList.remove('typing-cursor'); // Remove cursor
+            element.classList.remove('typing-cursor');
             scrollToBottom();
             return;
         }
 
         currentToken = tokens[tokenIndex];
 
-        // CASE A: HTML Tag (e.g., <b>, <span class="...">) -> Append Instantly
         if (currentToken.startsWith('<') && currentToken.endsWith('>')) {
             element.innerHTML += currentToken;
             tokenIndex++;
-            type(); // Recurse immediately (no delay)
-        } 
-        // CASE B: Plain Text -> Type char by char
-        else {
+            type(); 
+        } else {
             if (charIndex < currentToken.length) {
                 element.innerHTML += currentToken.charAt(charIndex);
                 charIndex++;
-                scrollToBottom(); // Auto-scroll while typing
+                scrollToBottom();
                 setTimeout(type, TYPING_SPEED);
             } else {
-                // Done with this string, move to next token
                 charIndex = 0;
                 tokenIndex++;
                 type();
             }
         }
     }
-
-    // Start typing
     type();
 }
 
 // ---------------------------------------------------------
-// AUDIO LOGIC
+// AUDIO & MESSAGING LOGIC
 // ---------------------------------------------------------
 
-// STOP speech before playing new one
 async function stopSpeech() {
     if (speakingAudio) {
         speakingAudio.pause();
@@ -123,7 +134,6 @@ async function stopSpeech() {
     }
 }
 
-// Text-to-Speech
 async function speakText(text) {
     try {
         const response = await fetch(`${API_PREFIX}/speak`, {
@@ -131,54 +141,71 @@ async function speakText(text) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
         });
-
         if (!response.ok) return;
-
         const blob = await response.blob();
         const audioURL = URL.createObjectURL(blob);
-
         speakingAudio = new Audio(audioURL);
         speakingAudio.play();
         speakingAudio.onended = () => URL.revokeObjectURL(audioURL);
-
     } catch (err) {
         console.error("TTS Error:", err);
     }
 }
 
-// ---------------------------------------------------------
-// MAIN MESSAGING LOGIC
-// ---------------------------------------------------------
 async function sendMessage() {
-    // ... existing code ...
+    const text = userInput.value.trim();
+    if (!text) return;
+
+    // 1. Show User Message
     addMessage(text, 'user');
     userInput.value = '';
 
-    showLoading(); // <--- SHOW ANIMATION
+    await stopSpeech(); 
+    
+    // 2. Show Loading Animation
+    showLoading();
 
     try {
-        const response = await fetch(`${API_PREFIX}/chat`, ...);
+        // 3. Send to Backend
+        const response = await fetch(`${API_PREFIX}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+        });
+
         const data = await response.json();
 
-        removeLoading(); // <--- HIDE ANIMATION
+        // 4. Remove Loading & Show Answer
+        removeLoading();
 
         if (data.response) {
             addMessage(data.response, 'bot');
-            // ...
+            speakText(data.response);
+        } else if (data.error) {
+            addMessage(`⚠️ Error: ${data.error}`, 'bot');
+        } else {
+            addMessage("⚠️ Server returned no response.", 'bot');
+        }
+
+    } catch (err) {
+        removeLoading();
+        console.error(err);
+        addMessage("❌ Cannot reach server.", 'bot');
+    }
+}
 
 // ---------------------------------------------------------
-// VOICE INPUT LOGIC
+// VOICE INPUT
 // ---------------------------------------------------------
 async function toggleRecording() {
     if (!isRecording) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
-
+            
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-
+            
             mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
                 await processVoice(audioBlob);
@@ -186,20 +213,16 @@ async function toggleRecording() {
 
             mediaRecorder.start();
             isRecording = true;
-
             micBtn.classList.add('active');
             waveVisualizer.classList.remove('hidden');
-
         } catch {
             alert("❌ Microphone permission blocked.");
         }
-
     } else {
         if(mediaRecorder) mediaRecorder.stop();
         isRecording = false;
         micBtn.classList.remove('active');
         waveVisualizer.classList.add('hidden');
-
         if(mediaRecorder && mediaRecorder.stream) {
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
         }
@@ -210,20 +233,24 @@ async function processVoice(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob);
 
+    // Show loading while transcribing voice
+    showLoading();
+
     try {
         const response = await fetch(`${API_PREFIX}/voice`, {
             method: 'POST',
             body: formData
         });
-
         const data = await response.json();
+        
+        removeLoading();
 
         if (data.text) {
             userInput.value = data.text;
-            sendMessage(); // Auto send after speaking
+            sendMessage(); 
         }
-
     } catch (err) {
+        removeLoading();
         console.error("STT Error:", err);
     }
 }
@@ -232,22 +259,3 @@ async function processVoice(audioBlob) {
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
 micBtn.addEventListener('click', toggleRecording);
-// Add this anywhere in app.js
-
-function showLoading() {
-    const loaderDiv = document.createElement('div');
-    loaderDiv.id = 'loading-indicator';
-    loaderDiv.className = 'message bot';
-    loaderDiv.innerHTML = `
-        <div class="avatar"><span class="material-symbols-rounded">medical_services</span></div>
-        <div class="content typing-indicator">
-            <span></span><span></span><span></span>
-        </div>`;
-    chatWindow.appendChild(loaderDiv);
-    scrollToBottom();
-}
-
-function removeLoading() {
-    const loader = document.getElementById('loading-indicator');
-    if (loader) loader.remove();
-}
