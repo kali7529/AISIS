@@ -2,29 +2,29 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dr. Nova AI</title>
+
   <!-- Google Fonts & Icons -->
-  <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap"
-    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+
   <!-- Markdown Parser -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- LOCAL STYLE -->
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
 
-  <!-- Background Elements -->
+  <!-- Background -->
   <div class="gradient-bg"></div>
 
-  <!-- Main Chat Interface -->
+  <!-- App -->
   <div class="app-container">
-
-    <!-- Header -->
     <header>
       <div class="brand">
         <span class="material-symbols-rounded logo-icon">stethoscope</span>
@@ -38,10 +38,11 @@
       </div>
     </header>
 
-    <!-- Chat Area -->
     <div class="chat-window" id="chatWindow">
       <div class="message bot welcome">
-        <div class="avatar"><span class="material-symbols-rounded">medical_services</span></div>
+        <div class="avatar">
+          <span class="material-symbols-rounded">medical_services</span>
+        </div>
         <div class="content">
           <p>Hello. I am <strong>Dr. Nova</strong>.</p>
           <p>I can help analyze symptoms, explain medications, and provide health advice. How are you feeling today?</p>
@@ -49,15 +50,10 @@
       </div>
     </div>
 
-    <!-- Input Area (Gemini Style) -->
     <div class="input-container">
-      <!-- Typing/Audio Visualizer -->
       <div id="waveVisualizer" class="wave-visualizer hidden">
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
-        <div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div>
       </div>
 
       <div class="input-wrapper">
@@ -65,18 +61,20 @@
           <span class="material-symbols-rounded">mic</span>
         </button>
 
-        <input type="text" id="userInput" placeholder="Describe your symptoms..." autocomplete="off">
+        <input type="text" id="userInput" placeholder="Describe your symptoms..." autocomplete="off" />
 
         <button id="sendBtn" class="icon-btn send" title="Send">
           <span class="material-symbols-rounded">arrow_upward</span>
         </button>
       </div>
-      <p class="disclaimer">Dr. Nova may display inaccurate info. Always verify with a human doctor.</p>
-    </div>
 
+      <p class="disclaimer">
+        ⚠️ Dr. Nova may give inaccurate info. Always verify with a real doctor.
+      </p>
+    </div>
   </div>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <!-- LOCAL JS -->
+  <script src="app.js"></script>
 </body>
-
 </html>
