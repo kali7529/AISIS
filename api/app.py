@@ -3,7 +3,6 @@ import asyncio
 import tempfile
 import edge_tts
 import speech_recognition as sr
-# ADDED: render_template
 from flask import Flask, jsonify, request, send_file, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -15,26 +14,23 @@ import google.generativeai as genai
 load_dotenv("gemini.env")
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Optional: Safety check so app doesn't crash if env var is missing during build
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
 # ========================================
 # APP INIT
 # ========================================
-# CHANGED: Added template_folder and static_folder paths
-# ".." means "go up one level" from the api folder
 app = Flask(__name__, 
             template_folder='../templates', 
             static_folder='../static')
 CORS(app)
 
-chat_history = []
+# Store history in Google's expected format
+chat_history = [] 
 
 # ========================================
 # HOME (SERVE FRONTEND)
 # ========================================
-# CHANGED: Now serves the HTML file instead of JSON
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -51,16 +47,37 @@ def chat():
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
-    chat_history.append({"role": "user", "content": user_msg})
-    chat_history_trimmed = chat_history[-10:]
+    # 1. Add User Message (GOOGLE FORMAT)
+    # Role: 'user' | Content is inside 'parts' -> 'text'
+    chat_history.append({
+        "role": "user",
+        "parts": [{"text": user_msg}]
+    })
+
+    # Keep only last 10 turns to avoid hitting limits
+    chat_history_trimmed = chat_history[-20:] 
 
     try:
-        response = genai.GenerativeModel("gemini-pro").generate_content(chat_history_trimmed)
+        # 2. Generate Response using the history list
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content(chat_history_trimmed)
+        
         bot_reply = response.text
-        chat_history.append({"role": "assistant", "content": bot_reply})
-        chat_history[:] = chat_history[-50:]
+
+        # 3. Add Bot Message (GOOGLE FORMAT)
+        # Role must be 'model' (not 'assistant')
+        chat_history.append({
+            "role": "model",
+            "parts": [{"text": bot_reply}]
+        })
+
         return jsonify({"response": bot_reply})
+
     except Exception as e:
+        # If error, remove the last user message so we don't break the history
+        if chat_history:
+            chat_history.pop()
+        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ========================================
@@ -73,9 +90,8 @@ def speak():
         return jsonify({"error": "Empty text"}), 400
 
     voice = "en-US-AriaNeural"
-    # Create temp file
     fd, path = tempfile.mkstemp(suffix=".mp3")
-    os.close(fd) # Close file descriptor immediately
+    os.close(fd)
 
     async def tts_job():
         communicate = edge_tts.Communicate(text, voice)
@@ -83,8 +99,6 @@ def speak():
 
     try:
         asyncio.run(tts_job())
-        # Note: Sending file and deleting it immediately is tricky in Flask.
-        # This setup works for small files usually.
         return send_file(path, as_attachment=True)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -98,7 +112,6 @@ def voice():
         return jsonify({"error": "No audio found"}), 400
 
     file = request.files["audio"]
-    # Create temp file
     fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     
@@ -116,7 +129,6 @@ def voice():
     except sr.RequestError:
         return jsonify({"error": "Google Speech API error"}), 500
     finally:
-        # cleanup
         if os.path.exists(path):
             os.remove(path)
 
