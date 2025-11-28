@@ -1,4 +1,7 @@
-const BASE_URL = "https://aisis.onrender.com"; // YOUR BACKEND URL
+// Automatically detect backend URL (works local + Render)
+const BASE_URL = window.location.origin.includes("localhost") 
+    ? "http://127.0.0.1:5000" 
+    : "https://aisis.onrender.com";
 
 const chatWindow = document.getElementById('chatWindow');
 const userInput = document.getElementById('userInput');
@@ -9,6 +12,7 @@ const waveVisualizer = document.getElementById('waveVisualizer');
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
+let speakingAudio = null; // <-- stop audio properly
 
 // Scroll helper
 function scrollToBottom() {
@@ -22,7 +26,7 @@ function addMessage(text, sender) {
 
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
-    avatar.innerHTML = sender === 'bot' 
+    avatar.innerHTML = sender === 'bot'
         ? '<span class="material-symbols-rounded">medical_services</span>'
         : '🧑';
 
@@ -42,13 +46,31 @@ function addMessage(text, sender) {
     scrollToBottom();
 }
 
-// Send text message
+
+// STOP speech before playing new one
+async function stopSpeech() {
+    if (speakingAudio) {
+        speakingAudio.pause();
+        speakingAudio.currentTime = 0;
+    }
+
+    try {
+        await fetch(`${BASE_URL}/stop`, { method: "POST" });
+    } catch (err) {
+        console.warn("Stop endpoint failed:", err);
+    }
+}
+
+
+// Send message
 async function sendMessage() {
     const text = userInput.value.trim();
     if (!text) return;
 
     addMessage(text, 'user');
     userInput.value = '';
+
+    await stopSpeech(); // <-- prevents overlap
 
     try {
         const response = await fetch(`${BASE_URL}/chat`, {
@@ -63,14 +85,15 @@ async function sendMessage() {
             addMessage(data.response, 'bot');
             speakText(data.response);
         } else {
-            addMessage("⚠️ Error from server.", 'bot');
+            addMessage("⚠️ Server error.", 'bot');
         }
 
     } catch (err) {
         console.error(err);
-        addMessage("❌ Server unreachable.", 'bot');
+        addMessage("❌ Cannot reach server.", 'bot');
     }
 }
+
 
 // Text-to-Speech
 async function speakText(text) {
@@ -86,16 +109,17 @@ async function speakText(text) {
         const blob = await response.blob();
         const audioURL = URL.createObjectURL(blob);
 
-        const audio = new Audio(audioURL);
-        audio.play();
-        audio.onended = () => URL.revokeObjectURL(audioURL);
+        speakingAudio = new Audio(audioURL);
+        speakingAudio.play();
+        speakingAudio.onended = () => URL.revokeObjectURL(audioURL);
 
     } catch (err) {
         console.error("TTS Error:", err);
     }
 }
 
-// Voice input
+
+// Voice mode
 async function toggleRecording() {
     if (!isRecording) {
         try {
@@ -131,7 +155,8 @@ async function toggleRecording() {
     }
 }
 
-// Send voice -> backend speech-to-text
+
+// Speech-to-text processing
 async function processVoice(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob);
@@ -154,7 +179,8 @@ async function processVoice(audioBlob) {
     }
 }
 
-// Event Listeners
+
+// EVENT LISTENERS
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
 micBtn.addEventListener('click', toggleRecording);
