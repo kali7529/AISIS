@@ -68,7 +68,7 @@ def chat():
     try:
         # USE THIS EXACT MODEL NAME
         # If this fails, check the logs for the list of '✅' models
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.0-nano")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
