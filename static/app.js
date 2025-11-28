@@ -1,3 +1,4 @@
+// static/app.js
 // Use relative path so it works on Localhost AND Render automatically
 const API_PREFIX = "/api"; 
 
@@ -17,7 +18,9 @@ function scrollToBottom() {
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
-// UI message renderer
+// ---------------------------------------------------------
+// UI MESSAGE RENDERER (With Animation)
+// ---------------------------------------------------------
 function addMessage(text, sender) {
     const messageEl = document.createElement('div');
     messageEl.className = `message ${sender}`;
@@ -31,19 +34,86 @@ function addMessage(text, sender) {
     const content = document.createElement('div');
     content.className = 'content';
 
-    // Parse Markdown if available, otherwise plain text
-    if (sender === 'bot' && typeof marked !== 'undefined') {
-        content.innerHTML = marked.parse(text);
-    } else {
-        content.innerText = text;
-    }
-
+    // Append elements to DOM first (so we can animate into them)
     messageEl.appendChild(avatar);
     messageEl.appendChild(content);
     chatWindow.appendChild(messageEl);
 
-    scrollToBottom();
+    // LOGIC: Typewriter for Bot, Instant for User
+    if (sender === 'bot') {
+        // 1. Parse Markdown to HTML
+        let htmlContent = typeof marked !== 'undefined' ? marked.parse(text) : text;
+        
+        // 2. Add Medicine Highlights (if MedicineDB is loaded)
+        if (typeof MedicineDB !== 'undefined') {
+            htmlContent = MedicineDB.highlightMedicines(htmlContent);
+        }
+
+        // 3. Start Typewriter Effect
+        content.classList.add('typing-cursor'); // Add blinking cursor
+        typeWriterEffect(content, htmlContent);
+        
+    } else {
+        // User message appears instantly
+        content.innerText = text;
+        scrollToBottom();
+    }
 }
+
+// ---------------------------------------------------------
+// TYPEWRITER ANIMATION LOGIC
+// ---------------------------------------------------------
+function typeWriterEffect(element, htmlString) {
+    // 1. Split HTML into tokens (tags vs text) to prevent breaking HTML
+    const tokens = htmlString.split(/(<[^>]+>)/g);
+    
+    let tokenIndex = 0;
+    let charIndex = 0;
+    let currentToken = "";
+
+    // CONFIGURATION: Speed in milliseconds (Lower = Faster)
+    // 10ms is a good "high speed" feel
+    const TYPING_SPEED = 10; 
+
+    function type() {
+        // Stop if done
+        if (tokenIndex >= tokens.length) {
+            element.classList.remove('typing-cursor'); // Remove cursor
+            scrollToBottom();
+            return;
+        }
+
+        currentToken = tokens[tokenIndex];
+
+        // CASE A: HTML Tag (e.g., <b>, <span class="...">) -> Append Instantly
+        if (currentToken.startsWith('<') && currentToken.endsWith('>')) {
+            element.innerHTML += currentToken;
+            tokenIndex++;
+            type(); // Recurse immediately (no delay)
+        } 
+        // CASE B: Plain Text -> Type char by char
+        else {
+            if (charIndex < currentToken.length) {
+                element.innerHTML += currentToken.charAt(charIndex);
+                charIndex++;
+                scrollToBottom(); // Auto-scroll while typing
+                setTimeout(type, TYPING_SPEED);
+            } else {
+                // Done with this string, move to next token
+                charIndex = 0;
+                tokenIndex++;
+                type();
+            }
+        }
+    }
+
+    // Start typing
+    type();
+}
+
+// ---------------------------------------------------------
+// AUDIO LOGIC
+// ---------------------------------------------------------
 
 // STOP speech before playing new one
 async function stopSpeech() {
@@ -53,48 +123,9 @@ async function stopSpeech() {
     }
 }
 
-// Main Send Message Function
-async function sendMessage() {
-    const text = userInput.value.trim();
-    if (!text) return;
-
-    // 1. Show User Message
-    addMessage(text, 'user');
-    userInput.value = '';
-
-    await stopSpeech(); 
-
-    try {
-        // 2. Send to Backend
-        // Fixed: sending to /api/chat
-        const response = await fetch(`${API_PREFIX}/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
-        });
-
-        const data = await response.json();
-
-        // 3. Handle Response
-        if (data.response) {
-            addMessage(data.response, 'bot');
-            speakText(data.response);
-        } else if (data.error) {
-            addMessage(`⚠️ Error: ${data.error}`, 'bot');
-        } else {
-            addMessage("⚠️ Server returned no response.", 'bot');
-        }
-
-    } catch (err) {
-        console.error(err);
-        addMessage("❌ Cannot reach server. Is the backend running?", 'bot');
-    }
-}
-
 // Text-to-Speech
 async function speakText(text) {
     try {
-        // Fixed: sending to /api/speak
         const response = await fetch(`${API_PREFIX}/speak`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -115,7 +146,48 @@ async function speakText(text) {
     }
 }
 
-// Voice mode
+// ---------------------------------------------------------
+// MAIN MESSAGING LOGIC
+// ---------------------------------------------------------
+async function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text) return;
+
+    // 1. Show User Message
+    addMessage(text, 'user');
+    userInput.value = '';
+
+    await stopSpeech(); 
+
+    try {
+        // 2. Send to Backend
+        const response = await fetch(`${API_PREFIX}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
+        });
+
+        const data = await response.json();
+
+        // 3. Handle Response
+        if (data.response) {
+            addMessage(data.response, 'bot');
+            speakText(data.response);
+        } else if (data.error) {
+            addMessage(`⚠️ Error: ${data.error}`, 'bot');
+        } else {
+            addMessage("⚠️ Server returned no response.", 'bot');
+        }
+
+    } catch (err) {
+        console.error(err);
+        addMessage("❌ Cannot reach server.", 'bot');
+    }
+}
+
+// ---------------------------------------------------------
+// VOICE INPUT LOGIC
+// ---------------------------------------------------------
 async function toggleRecording() {
     if (!isRecording) {
         try {
@@ -153,13 +225,11 @@ async function toggleRecording() {
     }
 }
 
-// Speech-to-text processing
 async function processVoice(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob);
 
     try {
-        // Fixed: sending to /api/voice
         const response = await fetch(`${API_PREFIX}/voice`, {
             method: 'POST',
             body: formData
