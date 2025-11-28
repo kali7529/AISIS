@@ -48,24 +48,23 @@ def chat():
         return jsonify({"error": "Empty message"}), 400
 
     # 1. Add User Message (GOOGLE FORMAT)
-    # Role: 'user' | Content is inside 'parts' -> 'text'
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    # Keep only last 10 turns to avoid hitting limits
+    # Keep only last 20 turns
     chat_history_trimmed = chat_history[-20:] 
 
     try:
-        # 2. Generate Response using the history list
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(chat_history_trimmed)
+        # 2. Generate Response
+        # CHANGED: 'gemini-pro' -> 'gemini-1.5-flash'
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
+        response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
         # 3. Add Bot Message (GOOGLE FORMAT)
-        # Role must be 'model' (not 'assistant')
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -74,8 +73,8 @@ def chat():
         return jsonify({"response": bot_reply})
 
     except Exception as e:
-        # If error, remove the last user message so we don't break the history
-        if chat_history:
+        # Remove failed message so history doesn't break
+        if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
