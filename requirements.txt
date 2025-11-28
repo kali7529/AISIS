@@ -6,3 +6,5 @@ speechrecognition
 pydub
 edge-tts
 gunicorn
+markdown
+Werkzeug==2.2.2
