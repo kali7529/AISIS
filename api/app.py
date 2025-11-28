@@ -25,46 +25,64 @@ app = Flask(__name__,
             static_folder='../static')
 CORS(app)
 
-# Store history in Google's expected format
 chat_history = [] 
 
 # ========================================
-# HOME (SERVE FRONTEND)
+# DEBUG ROUTE (CHECK AVAILABLE MODELS)
+# ========================================
+@app.route("/api/check", methods=["GET"])
+def check_models():
+    try:
+        if not API_KEY:
+            return jsonify({"error": "No API Key set"})
+        
+        # List all models available to your API key
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+                
+        return jsonify({
+            "status": "Online", 
+            "library_version": genai.__version__,
+            "available_models": available_models
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+# ========================================
+# HOME
 # ========================================
 @app.route("/")
 def home():
     return render_template("index.html")
 
 # ========================================
-# TEXT CHAT ENDPOINT
+# TEXT CHAT
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
     if not API_KEY:
-        return jsonify({"error": "API Key missing on server"}), 500
+        return jsonify({"error": "API Key missing"}), 500
         
     user_msg = request.json.get("message", "")
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
-    # 1. Add User Message (GOOGLE FORMAT)
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    # Keep only last 20 turns
     chat_history_trimmed = chat_history[-20:] 
 
     try:
-        # 2. Generate Response
-        # CHANGED: 'gemini-pro' -> 'gemini-1.5-flash'
+        # We use the standard flash model
         model = genai.GenerativeModel("gemini-1.5-flash")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
-        # 3. Add Bot Message (GOOGLE FORMAT)
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -73,14 +91,14 @@ def chat():
         return jsonify({"response": bot_reply})
 
     except Exception as e:
-        # Remove failed message so history doesn't break
+        # If 404 persists, the client can use the /api/check route to find the real name
+        print(f"Error: {e}")
         if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
-        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 # ========================================
-# TTS ENDPOINT
+# TTS
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
@@ -103,7 +121,7 @@ def speak():
         return jsonify({"error": str(e)}), 500
 
 # ========================================
-# VOICE INPUT TO TEXT
+# VOICE
 # ========================================
 @app.route("/api/voice", methods=["POST"])
 def voice():
@@ -131,8 +149,5 @@ def voice():
         if os.path.exists(path):
             os.remove(path)
 
-# ========================================
-# RUN LOCALLY
-# ========================================
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
