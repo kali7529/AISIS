@@ -1,7 +1,16 @@
-// Automatically detect backend URL (works local + Render)
-const BASE_URL = window.location.origin.includes("localhost") 
-    ? "http://127.0.0.1:5000" 
-    : "https://aisis.onrender.com";
+const API_URL = "https://aisis.onrender.com";
+
+async function sendMessage(text) {
+    const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ message: text })
+    });
+
+    return await response.json();
+}
 
 const chatWindow = document.getElementById('chatWindow');
 const userInput = document.getElementById('userInput');
