@@ -1,7 +1,8 @@
-Flask
+flask
 flask-cors
 google-generativeai
-edge-tts
-SpeechRecognition
+python-dotenv
+speechrecognition
 pydub
-gunicorn api.app:app
+edge-tts
+gunicorn
