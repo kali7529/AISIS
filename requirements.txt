@@ -4,3 +4,4 @@ google-generativeai
 edge-tts
 SpeechRecognition
 pydub
+gunicorn api.app:app
