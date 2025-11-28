@@ -3,8 +3,8 @@ import asyncio
 import tempfile
 import edge_tts
 import speech_recognition as sr
-from quart import Quart, jsonify, request, send_file
-from quart_cors import cors
+from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -21,31 +21,29 @@ genai.configure(api_key=API_KEY)
 # ========================================
 # APP INIT
 # ========================================
-app = Quart(__name__)
-app = cors(app, allow_origin="*")  # CORS
+app = Flask(__name__)
+CORS(app)
 
 chat_history = []
-current_tts_task = None
-current_output_file = None
+current_tts_file = None
 
 # ========================================
 # TEXT CHAT ENDPOINT
 # ========================================
 @app.route("/api/chat", methods=["POST"])
-async def chat():
-    user_msg = (await request.get_json()).get("message", "")
+def chat():
+    user_msg = request.json.get("message", "")
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
     chat_history.append({"role": "user", "content": user_msg})
-    chat_history_trimmed = chat_history[-10:]  # only last 10 messages
+    chat_history_trimmed = chat_history[-10:]  # last 10 messages
 
     response = genai.GenerativeModel("gemini-pro").generate_content(chat_history_trimmed)
     bot_reply = response.text
     chat_history.append({"role": "assistant", "content": bot_reply})
 
-    # Optional: trim chat_history to last 50
-    chat_history[:] = chat_history[-50:]
+    chat_history[:] = chat_history[-50:]  # trim full history
 
     return jsonify({"response": bot_reply})
 
@@ -53,58 +51,41 @@ async def chat():
 # TTS ENDPOINT
 # ========================================
 @app.route("/api/speak", methods=["POST"])
-async def speak():
-    global current_tts_task, current_output_file
+def speak():
+    global current_tts_file
 
-    data = await request.get_json()
-    text = data.get("text", "")
+    text = request.json.get("text", "")
     if not text:
         return jsonify({"error": "Empty text"}), 400
 
     voice = "en-US-AriaNeural"
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    current_output_file = temp.name
+    current_tts_file = temp.name
 
     async def tts_job():
         communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(current_output_file)
+        await communicate.save(current_tts_file)
 
-    current_tts_task = asyncio.create_task(tts_job())
+    # Run async TTS synchronously
     try:
-        await current_tts_task
-    except asyncio.CancelledError:
-        return jsonify({"status": "speech cancelled"}), 200
+        asyncio.run(tts_job())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    response = await send_file(current_output_file, as_attachment=True)
-    os.remove(current_output_file)
-    current_output_file = None
-    current_tts_task = None
+    response = send_file(current_tts_file, as_attachment=True)
+    os.remove(current_tts_file)
+    current_tts_file = None
     return response
-
-# ========================================
-# STOP SPEECH
-# ========================================
-@app.route("/api/stop", methods=["POST"])
-async def stop():
-    global current_tts_task, current_output_file
-    if current_tts_task and not current_tts_task.done():
-        current_tts_task.cancel()
-        if current_output_file and os.path.exists(current_output_file):
-            os.remove(current_output_file)
-        current_tts_task = None
-        current_output_file = None
-        return jsonify({"status": "speech stopped"})
-    return jsonify({"status": "no speech running"})
 
 # ========================================
 # VOICE INPUT TO TEXT
 # ========================================
 @app.route("/api/voice", methods=["POST"])
-async def voice():
-    if "audio" not in (await request.files):
+def voice():
+    if "audio" not in request.files:
         return jsonify({"error": "No audio found"}), 400
 
-    file = (await request.files)["audio"]
+    file = request.files["audio"]
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     file.save(temp.name)
 
@@ -112,7 +93,7 @@ async def voice():
     with sr.AudioFile(temp.name) as source:
         audio = recognizer.record(source)
 
-    os.remove(temp.name)  # cleanup
+    os.remove(temp.name)
 
     try:
         text = recognizer.recognize_google(audio)
@@ -126,16 +107,8 @@ async def voice():
 # HOME
 # ========================================
 @app.route("/", methods=["GET"])
-async def home():
+def home():
     return jsonify({"status": "API online"})
-
-# ========================================
-# SERVER ENTRY (for AWS Lambda / Vercel)
-# ========================================
-def handler(event, context):
-    # Requires: pip install serverless-asgi
-    from serverless_asgi import handle_request
-    return handle_request(app, event, context)
 
 # ========================================
 # RUN LOCALLY
