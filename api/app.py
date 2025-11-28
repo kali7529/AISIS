@@ -9,6 +9,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
 from werkzeug.middleware.proxy_fix import ProxyFix
+CORS(app)
 
 # ========================================
 # ENV VARS
