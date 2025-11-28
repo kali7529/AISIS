@@ -150,40 +150,21 @@ async function speakText(text) {
 // MAIN MESSAGING LOGIC
 // ---------------------------------------------------------
 async function sendMessage() {
-    const text = userInput.value.trim();
-    if (!text) return;
-
-    // 1. Show User Message
+    // ... existing code ...
     addMessage(text, 'user');
     userInput.value = '';
 
-    await stopSpeech(); 
+    showLoading(); // <--- SHOW ANIMATION
 
     try {
-        // 2. Send to Backend
-        const response = await fetch(`${API_PREFIX}/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
-        });
-
+        const response = await fetch(`${API_PREFIX}/chat`, ...);
         const data = await response.json();
 
-        // 3. Handle Response
+        removeLoading(); // <--- HIDE ANIMATION
+
         if (data.response) {
             addMessage(data.response, 'bot');
-            speakText(data.response);
-        } else if (data.error) {
-            addMessage(`⚠️ Error: ${data.error}`, 'bot');
-        } else {
-            addMessage("⚠️ Server returned no response.", 'bot');
-        }
-
-    } catch (err) {
-        console.error(err);
-        addMessage("❌ Cannot reach server.", 'bot');
-    }
-}
+            // ...
 
 // ---------------------------------------------------------
 // VOICE INPUT LOGIC
@@ -251,3 +232,22 @@ async function processVoice(audioBlob) {
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
 micBtn.addEventListener('click', toggleRecording);
+// Add this anywhere in app.js
+
+function showLoading() {
+    const loaderDiv = document.createElement('div');
+    loaderDiv.id = 'loading-indicator';
+    loaderDiv.className = 'message bot';
+    loaderDiv.innerHTML = `
+        <div class="avatar"><span class="material-symbols-rounded">medical_services</span></div>
+        <div class="content typing-indicator">
+            <span></span><span></span><span></span>
+        </div>`;
+    chatWindow.appendChild(loaderDiv);
+    scrollToBottom();
+}
+
+function removeLoading() {
+    const loader = document.getElementById('loading-indicator');
+    if (loader) loader.remove();
+}
