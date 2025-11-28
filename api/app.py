@@ -57,7 +57,7 @@ def chat():
     try:
         # 3. Generate Response
         # We use 'gemini-pro' because it is the most stable model
-        model = genai.GenerativeModel("gemini-pro")
+        model = genai.GenerativeModel("gemini-2.0")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
