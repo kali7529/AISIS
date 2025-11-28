@@ -14,20 +14,6 @@ API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    
-    # --- DEBUG: PRINT AVAILABLE MODELS TO LOGS ---
-    try:
-        print("\n=== GOOGLE API CONNECTED ===")
-        print("🔍 Checking available models...")
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                # Store strictly the name (e.g., models/gemini-1.5-flash)
-                available_models.append(m.name.replace("models/", ""))
-                print(f"   ✅ {m.name}")
-        print("==============================\n")
-    except Exception as e:
-        print(f"❌ Connection Error: {e}")
 else:
     print("❌ ERROR: GEMINI_API_KEY is missing in Render settings!")
 
@@ -57,22 +43,23 @@ def chat():
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
+    # Add User Message to History
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    # Keep history short
-    chat_history_trimmed = chat_history[-15:] 
+    # Keep history short (last 10 turns)
+    chat_history_trimmed = chat_history[-10:] 
 
     try:
-        # USE THIS EXACT MODEL NAME
-        # If this fails, check the logs for the list of '✅' models
-        model = genai.GenerativeModel("gemini-1.0-nano")
+        # UPDATED: Using the latest model found in your logs
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
+        # Add Bot Message to History
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -82,13 +69,13 @@ def chat():
 
     except Exception as e:
         print(f"AI Error: {e}")
-        # Remove failed user message to prevent history corruption
+        # Clean up history if it failed
         if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
         return jsonify({"error": str(e)}), 500
 
 # ========================================
-# TTS & VOICE
+# TTS ENDPOINT
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
@@ -110,6 +97,9 @@ def speak():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ========================================
+# VOICE ENDPOINT
+# ========================================
 @app.route("/api/voice", methods=["POST"])
 def voice():
     if "audio" not in request.files:
