@@ -1,11 +1,10 @@
 flask
 flask-cors
-google-generativeai
+google-generativeai>=0.8.3
 python-dotenv
 speechrecognition
-pydub
 edge-tts
+pydub
 gunicorn
 markdown
-Werkzeug==2.2.2
-
+werkzeug==2.2.2
