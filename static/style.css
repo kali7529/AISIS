@@ -374,3 +374,25 @@ input {
         transform: translateY(0);
     }
 }
+/* =========================================
+   MEDICINE HIGHLIGHT STYLES
+   (This makes medicine names green & clickable)
+   ========================================= */
+.med-highlight {
+    color: #6dd58c; /* Medical Green */
+    background: rgba(109, 213, 140, 0.15);
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-bottom: 1px dashed #6dd58c;
+    transition: all 0.2s;
+    display: inline-block; /* Keeps it neat */
+}
+
+.med-highlight:hover {
+    background: #6dd58c;
+    color: #000; /* Text turns black on hover for contrast */
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(109, 213, 140, 0.4);
+}
