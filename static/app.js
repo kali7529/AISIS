@@ -1,16 +1,5 @@
-const API_URL = "https://aisis.onrender.com";
-
-async function sendMessage(text) {
-    const response = await fetch(`${API_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ message: text })
-    });
-
-    return await response.json();
-}
+// Use relative path so it works on Localhost AND Render automatically
+const API_PREFIX = "/api"; 
 
 const chatWindow = document.getElementById('chatWindow');
 const userInput = document.getElementById('userInput');
@@ -21,7 +10,7 @@ const waveVisualizer = document.getElementById('waveVisualizer');
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
-let speakingAudio = null; // <-- stop audio properly
+let speakingAudio = null; 
 
 // Scroll helper
 function scrollToBottom() {
@@ -42,6 +31,7 @@ function addMessage(text, sender) {
     const content = document.createElement('div');
     content.className = 'content';
 
+    // Parse Markdown if available, otherwise plain text
     if (sender === 'bot' && typeof marked !== 'undefined') {
         content.innerHTML = marked.parse(text);
     } else {
@@ -55,34 +45,29 @@ function addMessage(text, sender) {
     scrollToBottom();
 }
 
-
 // STOP speech before playing new one
 async function stopSpeech() {
     if (speakingAudio) {
         speakingAudio.pause();
         speakingAudio.currentTime = 0;
     }
-
-    try {
-        await fetch(`${BASE_URL}/stop`, { method: "POST" });
-    } catch (err) {
-        console.warn("Stop endpoint failed:", err);
-    }
 }
 
-
-// Send message
+// Main Send Message Function
 async function sendMessage() {
     const text = userInput.value.trim();
     if (!text) return;
 
+    // 1. Show User Message
     addMessage(text, 'user');
     userInput.value = '';
 
-    await stopSpeech(); // <-- prevents overlap
+    await stopSpeech(); 
 
     try {
-        const response = await fetch(`${BASE_URL}/chat`, {
+        // 2. Send to Backend
+        // Fixed: sending to /api/chat
+        const response = await fetch(`${API_PREFIX}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text })
@@ -90,24 +75,27 @@ async function sendMessage() {
 
         const data = await response.json();
 
+        // 3. Handle Response
         if (data.response) {
             addMessage(data.response, 'bot');
             speakText(data.response);
+        } else if (data.error) {
+            addMessage(`⚠️ Error: ${data.error}`, 'bot');
         } else {
-            addMessage("⚠️ Server error.", 'bot');
+            addMessage("⚠️ Server returned no response.", 'bot');
         }
 
     } catch (err) {
         console.error(err);
-        addMessage("❌ Cannot reach server.", 'bot');
+        addMessage("❌ Cannot reach server. Is the backend running?", 'bot');
     }
 }
-
 
 // Text-to-Speech
 async function speakText(text) {
     try {
-        const response = await fetch(`${BASE_URL}/speak`, {
+        // Fixed: sending to /api/speak
+        const response = await fetch(`${API_PREFIX}/speak`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
@@ -126,7 +114,6 @@ async function speakText(text) {
         console.error("TTS Error:", err);
     }
 }
-
 
 // Voice mode
 async function toggleRecording() {
@@ -155,15 +142,16 @@ async function toggleRecording() {
         }
 
     } else {
-        mediaRecorder.stop();
+        if(mediaRecorder) mediaRecorder.stop();
         isRecording = false;
         micBtn.classList.remove('active');
         waveVisualizer.classList.add('hidden');
 
-        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        if(mediaRecorder && mediaRecorder.stream) {
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
     }
 }
-
 
 // Speech-to-text processing
 async function processVoice(audioBlob) {
@@ -171,7 +159,8 @@ async function processVoice(audioBlob) {
     formData.append('audio', audioBlob);
 
     try {
-        const response = await fetch(`${BASE_URL}/voice`, {
+        // Fixed: sending to /api/voice
+        const response = await fetch(`${API_PREFIX}/voice`, {
             method: 'POST',
             body: formData
         });
@@ -180,14 +169,13 @@ async function processVoice(audioBlob) {
 
         if (data.text) {
             userInput.value = data.text;
-            sendMessage();
+            sendMessage(); // Auto send after speaking
         }
 
     } catch (err) {
         console.error("STT Error:", err);
     }
 }
-
 
 // EVENT LISTENERS
 sendBtn.addEventListener('click', sendMessage);
