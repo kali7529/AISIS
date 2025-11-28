@@ -10,13 +10,26 @@ import google.generativeai as genai
 # ========================================
 # CONFIGURATION
 # ========================================
-# We get the key directly from Render's Environment settings
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
+    
+    # --- DEBUG: PRINT AVAILABLE MODELS TO LOGS ---
+    try:
+        print("\n=== GOOGLE API CONNECTED ===")
+        print("🔍 Checking available models...")
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                # Store strictly the name (e.g., models/gemini-1.5-flash)
+                available_models.append(m.name.replace("models/", ""))
+                print(f"   ✅ {m.name}")
+        print("==============================\n")
+    except Exception as e:
+        print(f"❌ Connection Error: {e}")
 else:
-    print("❌ ERROR: GEMINI_API_KEY is missing! Add it in Render Environment settings.")
+    print("❌ ERROR: GEMINI_API_KEY is missing in Render settings!")
 
 app = Flask(__name__, 
             template_folder='../templates', 
@@ -33,36 +46,33 @@ def home():
     return render_template("index.html")
 
 # ========================================
-# CHAT ROUTE
+# CHAT ENDPOINT
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    # 1. Check for API Key
     if not API_KEY:
-        return jsonify({"error": "Server missing API Key. Check Render Settings."}), 500
+        return jsonify({"error": "API Key missing"}), 500
         
     user_msg = request.json.get("message", "")
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
-    # 2. Add User Message
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    # Keep history short to prevent errors
-    chat_history_trimmed = chat_history[-10:] 
+    # Keep history short
+    chat_history_trimmed = chat_history[-15:] 
 
     try:
-        # 3. Generate Response
-        # We use 'gemini-pro' because it is the most stable model
-        model = genai.GenerativeModel("gemini-2.0")
+        # USE THIS EXACT MODEL NAME
+        # If this fails, check the logs for the list of '✅' models
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
-        # 4. Add Bot Message
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -71,14 +81,14 @@ def chat():
         return jsonify({"response": bot_reply})
 
     except Exception as e:
-        print(f"Generative AI Error: {e}")
-        # Clean up history if it failed
+        print(f"AI Error: {e}")
+        # Remove failed user message to prevent history corruption
         if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
-        return jsonify({"error": f"AI Error: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
 # ========================================
-# TTS ROUTE
+# TTS & VOICE
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
@@ -100,9 +110,6 @@ def speak():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ========================================
-# VOICE ROUTE
-# ========================================
 @app.route("/api/voice", methods=["POST"])
 def voice():
     if "audio" not in request.files:
