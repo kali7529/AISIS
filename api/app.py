@@ -5,50 +5,25 @@ import edge_tts
 import speech_recognition as sr
 from flask import Flask, jsonify, request, send_file, render_template
 from flask_cors import CORS
-from dotenv import load_dotenv
 import google.generativeai as genai
 
 # ========================================
-# ENV VARS
+# CONFIGURATION
 # ========================================
-load_dotenv("gemini.env")
-API_KEY = os.getenv("GEMINI_API_KEY")
+# We get the key directly from Render's Environment settings
+API_KEY = os.environ.get("GEMINI_API_KEY")
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
+else:
+    print("❌ ERROR: GEMINI_API_KEY is missing! Add it in Render Environment settings.")
 
-# ========================================
-# APP INIT
-# ========================================
 app = Flask(__name__, 
             template_folder='../templates', 
             static_folder='../static')
 CORS(app)
 
 chat_history = [] 
-
-# ========================================
-# DEBUG ROUTE (CHECK AVAILABLE MODELS)
-# ========================================
-@app.route("/api/check", methods=["GET"])
-def check_models():
-    try:
-        if not API_KEY:
-            return jsonify({"error": "No API Key set"})
-        
-        # List all models available to your API key
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-                
-        return jsonify({
-            "status": "Online", 
-            "library_version": genai.__version__,
-            "available_models": available_models
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)})
 
 # ========================================
 # HOME
@@ -58,31 +33,36 @@ def home():
     return render_template("index.html")
 
 # ========================================
-# TEXT CHAT
+# CHAT ROUTE
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
+    # 1. Check for API Key
     if not API_KEY:
-        return jsonify({"error": "API Key missing"}), 500
+        return jsonify({"error": "Server missing API Key. Check Render Settings."}), 500
         
     user_msg = request.json.get("message", "")
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
+    # 2. Add User Message
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    chat_history_trimmed = chat_history[-20:] 
+    # Keep history short to prevent errors
+    chat_history_trimmed = chat_history[-10:] 
 
     try:
-        # We use the standard flash model
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # 3. Generate Response
+        # We use 'gemini-pro' because it is the most stable model
+        model = genai.GenerativeModel("gemini-pro")
         
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
+        # 4. Add Bot Message
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -91,14 +71,14 @@ def chat():
         return jsonify({"response": bot_reply})
 
     except Exception as e:
-        # If 404 persists, the client can use the /api/check route to find the real name
-        print(f"Error: {e}")
+        print(f"Generative AI Error: {e}")
+        # Clean up history if it failed
         if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"AI Error: {str(e)}"}), 500
 
 # ========================================
-# TTS
+# TTS ROUTE
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
@@ -121,7 +101,7 @@ def speak():
         return jsonify({"error": str(e)}), 500
 
 # ========================================
-# VOICE
+# VOICE ROUTE
 # ========================================
 @app.route("/api/voice", methods=["POST"])
 def voice():
@@ -131,14 +111,12 @@ def voice():
     file = request.files["audio"]
     fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
-    
     file.save(path)
 
     recognizer = sr.Recognizer()
     try:
         with sr.AudioFile(path) as source:
             audio = recognizer.record(source)
-        
         text = recognizer.recognize_google(audio)
         return jsonify({"text": text})
     except sr.UnknownValueError:
