@@ -32,7 +32,7 @@ def home():
     return render_template("index.html")
 
 # ========================================
-# CHAT ENDPOINT
+# CHAT ENDPOINT (DOCTOR MODE)
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -53,9 +53,26 @@ def chat():
     chat_history_trimmed = chat_history[-10:] 
 
     try:
-        # UPDATED: Using the latest model found in your logs
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        # UPDATED: We add a 'system_instruction' to force it to act like a Doctor
+        model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            system_instruction="""
+            You are Dr. Nova, an expert AI Medical Consultant. 
+            Your role is to provide detailed, comprehensive medical information.
+            
+            When a user describes symptoms, you must provide:
+            1. **Potential Causes:** Explain what might be causing the issue strictly.
+            2. **Medical Treatment:** List specific medications (generic names with standard dosages) and standard medical treatments.
+            3. **Home Remedies:** Actionable advice for immediate relief.
+            
+            Tone: Professional, authoritative, and direct (like a senior doctor). 
+            Do not be vague. Give maximum information possible.
+            
+            (Always end with a short standard disclaimer that you are an AI, but do not let it stop you from giving the advice).
+            """
+        )
         
+        # Generate content
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
