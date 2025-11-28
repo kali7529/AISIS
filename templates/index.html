@@ -14,8 +14,10 @@
   <!-- Markdown Parser -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-  <!-- LOCAL STYLE -->
-  <link rel="stylesheet" href="style.css" />
+  <!-- LOCAL STYLE --><!-- OLD: <link rel="stylesheet" href="style.css"> or similar -->
+<!-- NEW: -->
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  
 </head>
 
 <body>
@@ -75,6 +77,9 @@
   </div>
 
   <!-- LOCAL JS -->
-  <script src="app.js"></script>
+  
+  <!-- OLD: <script src="app.js"></script> or similar -->
+<!-- NEW: -->
+<script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
