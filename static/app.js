@@ -259,3 +259,60 @@ async function processVoice(audioBlob) {
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('keypress', e => e.key === 'Enter' && sendMessage());
 micBtn.addEventListener('click', toggleRecording);
+// ---------------------------------------------------------
+// TYPEWRITER ANIMATION (Fixed for Mobile/Symbols)
+// ---------------------------------------------------------
+function typeWriterEffect(element, htmlString) {
+    // OLD: const tokens = htmlString.split(/(<[^>]+>)/g);
+    
+    // NEW: Split by HTML Tags (<...>) OR HTML Entities (&...;)
+    // This prevents &#39; (apostrophe) from looking like weird numbers
+    const tokens = htmlString.split(/(<[^>]+>|&[^;]+;)/g);
+    
+    let tokenIndex = 0;
+    let charIndex = 0;
+    let currentToken = "";
+    
+    // Speed: 10ms is fast and smooth
+    const TYPING_SPEED = 10; 
+
+    function type() {
+        if (tokenIndex >= tokens.length) {
+            element.classList.remove('typing-cursor');
+            scrollToBottom();
+            return;
+        }
+
+        currentToken = tokens[tokenIndex];
+
+        // CHECK 1: Is it a Tag? (e.g. <b>) OR an Entity? (e.g. &#39;)
+        // If yes, add it INSTANTLY so it renders correctly
+        if ( (currentToken.startsWith('<') && currentToken.endsWith('>')) || 
+             (currentToken.startsWith('&') && currentToken.endsWith(';')) ) {
+            
+            element.innerHTML += currentToken;
+            tokenIndex++;
+            type(); // Move to next token immediately
+        } 
+        // CHECK 2: Is it valid text?
+        else if (currentToken) {
+            if (charIndex < currentToken.length) {
+                element.innerHTML += currentToken.charAt(charIndex);
+                charIndex++;
+                scrollToBottom();
+                setTimeout(type, TYPING_SPEED);
+            } else {
+                charIndex = 0;
+                tokenIndex++;
+                type();
+            }
+        } 
+        // Empty token (sometimes split creates empty strings)
+        else {
+            tokenIndex++;
+            type();
+        }
+    }
+
+    type();
+}
