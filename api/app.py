@@ -3,7 +3,8 @@ import asyncio
 import tempfile
 import edge_tts
 import speech_recognition as sr
-from flask import Flask, jsonify, request, send_file
+# ADDED: render_template
+from flask import Flask, jsonify, request, send_file, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -13,69 +14,80 @@ import google.generativeai as genai
 # ========================================
 load_dotenv("gemini.env")
 API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise Exception("❌ GEMINI_API_KEY not loaded — fix gemini.env")
 
-genai.configure(api_key=API_KEY)
+# Optional: Safety check so app doesn't crash if env var is missing during build
+if API_KEY:
+    genai.configure(api_key=API_KEY)
 
 # ========================================
 # APP INIT
 # ========================================
-app = Flask(__name__)
+# CHANGED: Added template_folder and static_folder paths
+# ".." means "go up one level" from the api folder
+app = Flask(__name__, 
+            template_folder='../templates', 
+            static_folder='../static')
 CORS(app)
 
 chat_history = []
-current_tts_file = None
+
+# ========================================
+# HOME (SERVE FRONTEND)
+# ========================================
+# CHANGED: Now serves the HTML file instead of JSON
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 # ========================================
 # TEXT CHAT ENDPOINT
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
+    if not API_KEY:
+        return jsonify({"error": "API Key missing on server"}), 500
+        
     user_msg = request.json.get("message", "")
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
     chat_history.append({"role": "user", "content": user_msg})
-    chat_history_trimmed = chat_history[-10:]  # last 10 messages
+    chat_history_trimmed = chat_history[-10:]
 
-    response = genai.GenerativeModel("gemini-pro").generate_content(chat_history_trimmed)
-    bot_reply = response.text
-    chat_history.append({"role": "assistant", "content": bot_reply})
-
-    chat_history[:] = chat_history[-50:]  # trim full history
-
-    return jsonify({"response": bot_reply})
+    try:
+        response = genai.GenerativeModel("gemini-pro").generate_content(chat_history_trimmed)
+        bot_reply = response.text
+        chat_history.append({"role": "assistant", "content": bot_reply})
+        chat_history[:] = chat_history[-50:]
+        return jsonify({"response": bot_reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ========================================
 # TTS ENDPOINT
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
-    global current_tts_file
-
     text = request.json.get("text", "")
     if not text:
         return jsonify({"error": "Empty text"}), 400
 
     voice = "en-US-AriaNeural"
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    current_tts_file = temp.name
+    # Create temp file
+    fd, path = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd) # Close file descriptor immediately
 
     async def tts_job():
         communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(current_tts_file)
+        await communicate.save(path)
 
-    # Run async TTS synchronously
     try:
         asyncio.run(tts_job())
+        # Note: Sending file and deleting it immediately is tricky in Flask.
+        # This setup works for small files usually.
+        return send_file(path, as_attachment=True)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-    response = send_file(current_tts_file, as_attachment=True)
-    os.remove(current_tts_file)
-    current_tts_file = None
-    return response
 
 # ========================================
 # VOICE INPUT TO TEXT
@@ -86,29 +98,27 @@ def voice():
         return jsonify({"error": "No audio found"}), 400
 
     file = request.files["audio"]
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    file.save(temp.name)
+    # Create temp file
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    
+    file.save(path)
 
     recognizer = sr.Recognizer()
-    with sr.AudioFile(temp.name) as source:
-        audio = recognizer.record(source)
-
-    os.remove(temp.name)
-
     try:
+        with sr.AudioFile(path) as source:
+            audio = recognizer.record(source)
+        
         text = recognizer.recognize_google(audio)
         return jsonify({"text": text})
     except sr.UnknownValueError:
         return jsonify({"text": ""})
     except sr.RequestError:
         return jsonify({"error": "Google Speech API error"}), 500
-
-# ========================================
-# HOME
-# ========================================
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"status": "API online"})
+    finally:
+        # cleanup
+        if os.path.exists(path):
+            os.remove(path)
 
 # ========================================
 # RUN LOCALLY
