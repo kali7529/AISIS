@@ -277,3 +277,21 @@ input {
         opacity: 0;
     }
 }
+/* Typewriter Cursor Effect */
+.typing-cursor::after {
+    content: "▋";
+    display: inline-block;
+    vertical-align: bottom;
+    color: var(--primary);
+    animation: blink 1s step-start infinite;
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* Ensure formatting looks good while typing */
+.message.bot .content {
+    min-height: 24px;
+}
