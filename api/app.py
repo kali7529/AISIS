@@ -25,6 +25,35 @@ CORS(app)
 chat_history = [] 
 
 # ========================================
+# DOCTOR PERSONALITY & KNOWLEDGE BASE
+# ========================================
+# This is where we "feed" the extra info and personality
+DOCTOR_SYSTEM_PROMPT = """
+You are Dr. Nova, a board-certified Senior Medical Consultant with 20 years of experience.
+Your goal is to provide comprehensive, accurate, and actionable medical advice while maintaining a professional and empathetic bedside manner.
+
+### YOUR BEHAVIORAL GUIDELINES:
+1.  **Tone:** Professional, authoritative, yet warm. Use medical terminology but briefly explain it (e.g., "Anti-inflammatory" instead of just "painkiller").
+2.  **Structure:** Do not just give a list. Organize your response like a prescription:
+    *   **Diagnosis/Observation:** Briefly assess what the symptoms suggest.
+    *   **Immediate Relief (Home):** Non-medical steps.
+    *   **Pharmacology (Meds):** Specific generic medicine names, dosages (mg), and frequency.
+    *   **Warning Signs:** When to go to the ER.
+3.  **Proactiveness:** If the user is vague (e.g., "my stomach hurts"), ask ONE clarifying question before giving general advice (e.g., "Is it sharp pain or dull?").
+
+### MEDICAL KNOWLEDGE TO USE:
+- **Headaches:** Suggest Ibuprofen (400mg) or Paracetamol (500mg). Mention hydration.
+- **Fever:** Suggest Paracetamol every 4-6 hours. Cool compresses.
+- **Cold/Flu:** Suggest Decongestants (Pseudoephedrine), Fluids, Rest.
+- **Stomach Pain:** Suggest Antacids (Tums) or Proton Pump Inhibitors (Omeprazole) if acidic.
+
+### CRITICAL RULES:
+- Always include standard adult dosages (e.g., "500mg every 4 hours").
+- Always mention **Contraindications** (e.g., "Do not take Ibuprofen on an empty stomach").
+- **Disclaimer:** End every message with a very short, single-line disclaimer: "I am an AI. Please consult a physical doctor for emergencies."
+"""
+
+# ========================================
 # HOME
 # ========================================
 @app.route("/")
@@ -32,7 +61,7 @@ def home():
     return render_template("index.html")
 
 # ========================================
-# CHAT ENDPOINT (DOCTOR MODE)
+# CHAT ENDPOINT
 # ========================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -43,40 +72,26 @@ def chat():
     if not user_msg:
         return jsonify({"error": "Empty message"}), 400
 
-    # Add User Message to History
+    # Add User Message
     chat_history.append({
         "role": "user",
         "parts": [{"text": user_msg}]
     })
 
-    # Keep history short (last 10 turns)
+    # Keep history short
     chat_history_trimmed = chat_history[-10:] 
 
     try:
-        # UPDATED: We add a 'system_instruction' to force it to act like a Doctor
+        # We inject the DOCTOR_SYSTEM_PROMPT here
         model = genai.GenerativeModel(
             "gemini-2.5-flash",
-            system_instruction="""
-            You are Dr. Nova, an expert AI Medical Consultant. 
-            Your role is to provide detailed, comprehensive medical information.
-            
-            When a user describes symptoms, you must provide:
-            1. **Potential Causes:** Explain what might be causing the issue strictly.
-            2. **Medical Treatment:** List specific medications (generic names with standard dosages) and standard medical treatments.
-            3. **Home Remedies:** Actionable advice for immediate relief.
-            
-            Tone: Professional, authoritative, and direct (like a senior doctor). 
-            Do not be vague. Give maximum information possible.
-            
-            (Always end with a short standard disclaimer that you are an AI, but do not let it stop you from giving the advice).
-            """
+            system_instruction=DOCTOR_SYSTEM_PROMPT
         )
         
-        # Generate content
         response = model.generate_content(chat_history_trimmed)
         bot_reply = response.text
 
-        # Add Bot Message to History
+        # Add Bot Message
         chat_history.append({
             "role": "model",
             "parts": [{"text": bot_reply}]
@@ -86,47 +101,38 @@ def chat():
 
     except Exception as e:
         print(f"AI Error: {e}")
-        # Clean up history if it failed
         if chat_history and chat_history[-1]["role"] == "user":
             chat_history.pop()
         return jsonify({"error": str(e)}), 500
 
 # ========================================
-# TTS ENDPOINT
+# TTS & VOICE ENDPOINTS (Standard)
 # ========================================
 @app.route("/api/speak", methods=["POST"])
 def speak():
     text = request.json.get("text", "")
     if not text:
         return jsonify({"error": "Empty text"}), 400
-
     voice = "en-US-AriaNeural"
     fd, path = tempfile.mkstemp(suffix=".mp3")
     os.close(fd)
-
     async def tts_job():
         communicate = edge_tts.Communicate(text, voice)
         await communicate.save(path)
-
     try:
         asyncio.run(tts_job())
         return send_file(path, as_attachment=True)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ========================================
-# VOICE ENDPOINT
-# ========================================
 @app.route("/api/voice", methods=["POST"])
 def voice():
     if "audio" not in request.files:
         return jsonify({"error": "No audio found"}), 400
-
     file = request.files["audio"]
     fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     file.save(path)
-
     recognizer = sr.Recognizer()
     try:
         with sr.AudioFile(path) as source:
